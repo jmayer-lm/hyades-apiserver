@@ -22,6 +22,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import io.swagger.v3.oas.annotations.media.Schema;
 import org.dependencytrack.model.Classifier;
 import org.dependencytrack.model.Tag;
+import org.dependencytrack.model.Team;
 import org.dependencytrack.persistence.jdbi.ProjectDao.ConciseProjectListRow;
 
 import java.util.Collection;
@@ -36,17 +37,18 @@ import java.util.UUID;
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 @Schema(description = "A concise representation of a project")
 public record ConciseProject(
-        @Schema(description = "UUID of the project", requiredMode = Schema.RequiredMode.REQUIRED) UUID uuid,
-        @Schema(description = "Group or namespace of the project") String group,
-        @Schema(description = "Name of the project", requiredMode = Schema.RequiredMode.REQUIRED) String name,
-        @Schema(description = "Version of the project") String version,
-        @Schema(description = "Classifier of the project") Classifier classifier,
-        @Schema(description = "Whether the project is active", requiredMode = Schema.RequiredMode.REQUIRED) boolean active,
-        @Schema(description = "Tags associated with the project") List<Tag> tags,
-        @Schema(description = "Timestamp of the last BOM import", type = "number", example = "1719499619599") Date lastBomImport,
-        @Schema(description = "Format of the last imported BOM") String lastBomImportFormat,
-        @Schema(description = "Whether the project has children", requiredMode = Schema.RequiredMode.REQUIRED) boolean hasChildren,
-        @Schema(description = "Latest metrics for the project") ConciseProjectMetrics metrics
+        @ApiModelProperty(value = "UUID of the project", required = true) UUID uuid,
+        @ApiModelProperty(value = "Group or namespace of the project") String group,
+        @ApiModelProperty(value = "Name of the project", required = true) String name,
+        @ApiModelProperty(value = "Version of the project") String version,
+        @ApiModelProperty(value = "Classifier of the project") Classifier classifier,
+        @ApiModelProperty(value = "Whether the project is active", required = true) boolean active,
+        @ApiModelProperty(value = "Tags associated with the project") List<Tag> tags,
+        @ApiModelProperty(value = "Teams associated with the project") List<Team> teams,
+        @ApiModelProperty(value = "Timestamp of the last BOM import", dataType = "number", example = "1719499619599") Date lastBomImport,
+        @ApiModelProperty(value = "Format of the last imported BOM") String lastBomImportFormat,
+        @ApiModelProperty(value = "Whether the project has children", required = true) boolean hasChildren,
+        @ApiModelProperty(value = "Latest metrics for the project") ConciseProjectMetrics metrics
 ) {
 
     public ConciseProject(final ConciseProjectListRow row) {
@@ -54,6 +56,7 @@ public record ConciseProject(
                 row.classifier() != null ? Classifier.valueOf(row.classifier()) : null,
                 row.active(),
                 convertTags(row.tags()),
+                convertTeams(row.teams()),
                 row.lastBomImport() != null ? Date.from(row.lastBomImport()) : null,
                 row.lastBomImportFormat(),
                 row.hasChildren(),
@@ -70,6 +73,20 @@ public record ConciseProject(
                     final var tag = new Tag();
                     tag.setName(tagName);
                     return tag;
+                })
+                .toList();
+    }
+
+    private static List<Team> convertTeams(final Collection<String> teamNames) {
+        if (teamNames == null || teamNames.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        return teamNames.stream()
+                .map(teamName -> {
+                    final var team = new Team();
+                    team.setName(teamName);
+                    return team;
                 })
                 .toList();
     }
