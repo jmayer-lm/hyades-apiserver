@@ -21,7 +21,7 @@ package org.dependencytrack.resources.v1;
 import alpine.common.logging.Logger;
 import alpine.model.Permission;
 import alpine.model.Team;
-import alpine.model.UserPrincipal;
+import alpine.model.User;
 import alpine.server.auth.PermissionRequired;
 import alpine.server.resources.AlpineResource;
 import io.swagger.v3.oas.annotations.Operation;
@@ -33,6 +33,13 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.dependencytrack.auth.Permissions;
+import org.dependencytrack.model.validation.ValidUuid;
+import org.dependencytrack.persistence.QueryManager;
+import org.dependencytrack.resources.v1.vo.TeamPermissionsSetRequest;
+import org.dependencytrack.resources.v1.vo.UserPermissionsSetRequest;
+import org.owasp.security.logging.SecurityMarkers;
+
 import jakarta.validation.Valid;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
@@ -45,7 +52,6 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.dependencytrack.auth.Permissions;
-import org.dependencytrack.model.Role;
 import org.dependencytrack.model.validation.ValidUuid;
 import org.dependencytrack.persistence.QueryManager;
 import org.dependencytrack.resources.v1.vo.TeamPermissionsSetRequest;
@@ -54,6 +60,7 @@ import org.owasp.security.logging.SecurityMarkers;
 
 import java.util.List;
 import javax.jdo.Query;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -75,19 +82,12 @@ public class PermissionResource extends AlpineResource {
 
     @GET
     @Produces(MediaType.APPLICATION_JSON)
-    @Operation(
-            summary = "Returns a list of all permissions",
-            description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_READ</strong></p>"
-    )
+    @Operation(summary = "Returns a list of all permissions", description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_READ</strong></p>")
     @ApiResponses(value = {
-            @ApiResponse(
-                    responseCode = "200",
-                    description = "A list of all permissions",
-                    content = @Content(schema = @Schema(implementation = Permissions.class))
-            ),
+            @ApiResponse(responseCode = "200", description = "A list of all permissions", content = @Content(schema = @Schema(implementation = Permissions.class))),
             @ApiResponse(responseCode = "401", description = "Unauthorized")
     })
-    @PermissionRequired({Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_READ})
+    @PermissionRequired({ Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_READ })
     public Response getAllPermissions() {
         try (QueryManager qm = new QueryManager()) {
             final List<Permission> permissions = qm.getPermissions();
@@ -99,28 +99,19 @@ public class PermissionResource extends AlpineResource {
     @Path("/{permission}/user/{username}")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    @Operation(
-            summary = "Adds the permission to the specified username.",
-            description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_UPDATE</strong></p>"
-    )
+    @Operation(summary = "Adds the permission to the specified username.", description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_UPDATE</strong></p>")
     @ApiResponses(value = {
-            @ApiResponse(
-                    responseCode = "200",
-                    description = "The updated user",
-                    content = @Content(schema = @Schema(implementation = UserPrincipal.class))
-            ),
+            @ApiResponse(responseCode = "200", description = "The updated user", content = @Content(schema = @Schema(implementation = User.class))),
             @ApiResponse(responseCode = "304", description = "The user already has the specified permission assigned"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
             @ApiResponse(responseCode = "404", description = "The user could not be found")
     })
-    @PermissionRequired({Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_UPDATE})
+    @PermissionRequired({ Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_UPDATE })
     public Response addPermissionToUser(
-            @Parameter(description = "A valid username", required = true)
-            @PathParam("username") String username,
-            @Parameter(description = "A valid permission", required = true)
-            @PathParam("permission") String permissionName) {
+            @Parameter(description = "A valid username", required = true) @PathParam("username") String username,
+            @Parameter(description = "A valid permission", required = true) @PathParam("permission") String permissionName) {
         try (QueryManager qm = new QueryManager()) {
-            UserPrincipal principal = qm.getUserPrincipal(username);
+            User principal = qm.getUser(username);
             if (principal == null) {
                 return Response.status(Response.Status.NOT_FOUND).entity("The user could not be found.").build();
             }
@@ -133,7 +124,8 @@ public class PermissionResource extends AlpineResource {
                 permissions.add(permission);
                 principal.setPermissions(permissions);
                 principal = qm.persist(principal);
-                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT, "Added permission for user: " + principal.getName() + " / permission: " + permission.getName());
+                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT,
+                        "Added permission for user: " + principal.getName() + " / permission: " + permission.getName());
                 return Response.ok(principal).build();
             }
             return Response.status(Response.Status.NOT_MODIFIED).build();
@@ -144,28 +136,19 @@ public class PermissionResource extends AlpineResource {
     @Path("/{permission}/user/{username}")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    @Operation(
-            summary = "Removes the permission from the user.",
-            description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_DELETE</strong></p>"
-    )
+    @Operation(summary = "Removes the permission from the user.", description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_DELETE</strong></p>")
     @ApiResponses(value = {
-            @ApiResponse(
-                    responseCode = "200",
-                    description = "The updated user",
-                    content = @Content(schema = @Schema(implementation = UserPrincipal.class))
-            ),
+            @ApiResponse(responseCode = "200", description = "The updated user", content = @Content(schema = @Schema(implementation = User.class))),
             @ApiResponse(responseCode = "304", description = "The user already has the specified permission assigned"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
             @ApiResponse(responseCode = "404", description = "The user could not be found")
     })
-    @PermissionRequired({Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_DELETE})
+    @PermissionRequired({ Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_DELETE })
     public Response removePermissionFromUser(
-            @Parameter(description = "A valid username", required = true)
-            @PathParam("username") String username,
-            @Parameter(description = "A valid permission", required = true)
-            @PathParam("permission") String permissionName) {
+            @Parameter(description = "A valid username", required = true) @PathParam("username") String username,
+            @Parameter(description = "A valid permission", required = true) @PathParam("permission") String permissionName) {
         try (QueryManager qm = new QueryManager()) {
-            UserPrincipal principal = qm.getUserPrincipal(username);
+            User principal = qm.getUser(username);
             if (principal == null) {
                 return Response.status(Response.Status.NOT_FOUND).entity("The user could not be found.").build();
             }
@@ -178,7 +161,8 @@ public class PermissionResource extends AlpineResource {
                 permissions.remove(permission);
                 principal.setPermissions(permissions);
                 principal = qm.persist(principal);
-                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT, "Removed permission for user: " + principal.getName() + " / permission: " + permission.getName());
+                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT, "Removed permission for user: "
+                        + principal.getName() + " / permission: " + permission.getName());
                 return Response.ok(principal).build();
             }
             return Response.status(Response.Status.NOT_MODIFIED).build();
@@ -189,25 +173,17 @@ public class PermissionResource extends AlpineResource {
     @Path("/{permission}/team/{uuid}")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    @Operation(
-            description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_UPDATE</strong></p>"
-    )
+    @Operation(description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_UPDATE</strong></p>")
     @ApiResponses(value = {
-            @ApiResponse(
-                    responseCode = "200",
-                    description = "The updated team",
-                    content = @Content(schema = @Schema(implementation = Team.class))
-            ),
+            @ApiResponse(responseCode = "200", description = "The updated team", content = @Content(schema = @Schema(implementation = Team.class))),
             @ApiResponse(responseCode = "304", description = "The team already has the specified permission assigned"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
             @ApiResponse(responseCode = "404", description = "The team could not be found")
     })
-    @PermissionRequired({Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_UPDATE})
+    @PermissionRequired({ Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_UPDATE })
     public Response addPermissionToTeam(
-            @Parameter(description = "A valid team uuid", schema = @Schema(type = "string", format = "uuid"), required = true)
-            @PathParam("uuid") @ValidUuid String uuid,
-            @Parameter(description = "A valid permission", required = true)
-            @PathParam("permission") String permissionName) {
+            @Parameter(description = "A valid team uuid", schema = @Schema(type = "string", format = "uuid"), required = true) @PathParam("uuid") @ValidUuid String uuid,
+            @Parameter(description = "A valid permission", required = true) @PathParam("permission") String permissionName) {
         try (QueryManager qm = new QueryManager()) {
             Team team = qm.getObjectByUuid(Team.class, uuid);
             if (team == null) {
@@ -222,7 +198,8 @@ public class PermissionResource extends AlpineResource {
                 permissions.add(permission);
                 team.setPermissions(permissions);
                 team = qm.persist(team);
-                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT, "Added permission for team: " + team.getName() + " / permission: " + permission.getName());
+                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT,
+                        "Added permission for team: " + team.getName() + " / permission: " + permission.getName());
                 return Response.ok(team).build();
             }
             return Response.status(Response.Status.NOT_MODIFIED).build();
@@ -233,25 +210,17 @@ public class PermissionResource extends AlpineResource {
     @Path("/{permission}/role/{uuid}")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    @Operation(
-            description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_DELETE</strong></p>"
-    )
+    @Operation(description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_DELETE</strong></p>")
     @ApiResponses(value = {
-            @ApiResponse(
-                    responseCode = "200",
-                    description = "The updated role",
-                    content = @Content(schema = @Schema(implementation = Role.class))
-            ),
+            @ApiResponse(responseCode = "200", description = "The updated role", content = @Content(schema = @Schema(implementation = Role.class))),
             @ApiResponse(responseCode = "304", description = "The role already has the specified permission assigned"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
             @ApiResponse(responseCode = "404", description = "The role could not be found")
     })
-    @PermissionRequired({Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_DELETE})
+    @PermissionRequired({ Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_DELETE })
     public Response removePermissionFromRole(
-            @Parameter(description = "A valid role uuid", schema = @Schema(type = "string", format = "uuid"), required = true)
-            @PathParam("uuid") @ValidUuid String uuid,
-            @Parameter(description = "A valid permission", required = true)
-            @PathParam("permission") String permissionName) {
+            @Parameter(description = "A valid role uuid", schema = @Schema(type = "string", format = "uuid"), required = true) @PathParam("uuid") @ValidUuid String uuid,
+            @Parameter(description = "A valid permission", required = true) @PathParam("permission") String permissionName) {
         try (QueryManager qm = new QueryManager()) {
             Role role = qm.getObjectByUuid(Role.class, uuid);
             if (role == null) {
@@ -266,7 +235,8 @@ public class PermissionResource extends AlpineResource {
                 permissions.remove(permission);
                 role.setPermissions(permissions);
                 role = qm.persist(role);
-                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT, "Removed permission for role: " + role.getName() + " / permission: " + permission.getName());
+                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT,
+                        "Removed permission for role: " + role.getName() + " / permission: " + permission.getName());
                 return Response.ok(role).build();
             }
             return Response.status(Response.Status.NOT_MODIFIED).build();
@@ -277,25 +247,17 @@ public class PermissionResource extends AlpineResource {
     @Path("/{permission}/role/{uuid}")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    @Operation(
-            description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_UPDATE</strong></p>"
-    )
+    @Operation(description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_UPDATE</strong></p>")
     @ApiResponses(value = {
-            @ApiResponse(
-                    responseCode = "200",
-                    description = "The updated role",
-                    content = @Content(schema = @Schema(implementation = Role.class))
-            ),
+            @ApiResponse(responseCode = "200", description = "The updated role", content = @Content(schema = @Schema(implementation = Role.class))),
             @ApiResponse(responseCode = "304", description = "The role already has the specified permission assigned"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
             @ApiResponse(responseCode = "404", description = "The role could not be found")
     })
-    @PermissionRequired({Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_UPDATE})
+    @PermissionRequired({ Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_UPDATE })
     public Response addPermissionToRole(
-            @Parameter(description = "A valid role uuid", schema = @Schema(type = "string", format = "uuid"), required = true)
-            @PathParam("uuid") @ValidUuid String uuid,
-            @Parameter(description = "A valid permission", required = true)
-            @PathParam("permission") String permissionName) {
+            @Parameter(description = "A valid role uuid", schema = @Schema(type = "string", format = "uuid"), required = true) @PathParam("uuid") @ValidUuid String uuid,
+            @Parameter(description = "A valid permission", required = true) @PathParam("permission") String permissionName) {
         try (QueryManager qm = new QueryManager()) {
             Role role = qm.getObjectByUuid(Role.class, uuid);
             if (role == null) {
@@ -310,7 +272,8 @@ public class PermissionResource extends AlpineResource {
                 permissions.add(permission);
                 role.setPermissions(permissions);
                 role = qm.persist(role);
-                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT, "Added permission for role: " + role.getName() + " / permission: " + permission.getName());
+                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT,
+                        "Added permission for role: " + role.getName() + " / permission: " + permission.getName());
                 return Response.ok(role).build();
             }
             return Response.status(Response.Status.NOT_MODIFIED).build();
@@ -321,25 +284,17 @@ public class PermissionResource extends AlpineResource {
     @Path("/{permission}/team/{uuid}")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    @Operation(
-            description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_DELETE</strong></p>"
-    )
+    @Operation(description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_DELETE</strong></p>")
     @ApiResponses(value = {
-            @ApiResponse(
-                    responseCode = "200",
-                    description = "The updated team",
-                    content = @Content(schema = @Schema(implementation = Team.class))
-            ),
+            @ApiResponse(responseCode = "200", description = "The updated team", content = @Content(schema = @Schema(implementation = Team.class))),
             @ApiResponse(responseCode = "304", description = "The team already has the specified permission assigned"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
             @ApiResponse(responseCode = "404", description = "The team could not be found")
     })
-    @PermissionRequired({Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_DELETE})
+    @PermissionRequired({ Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_DELETE })
     public Response removePermissionFromTeam(
-            @Parameter(description = "A valid team uuid", schema = @Schema(type = "string", format = "uuid"), required = true)
-            @PathParam("uuid") @ValidUuid String uuid,
-            @Parameter(description = "A valid permission", required = true)
-            @PathParam("permission") String permissionName) {
+            @Parameter(description = "A valid team uuid", schema = @Schema(type = "string", format = "uuid"), required = true) @PathParam("uuid") @ValidUuid String uuid,
+            @Parameter(description = "A valid permission", required = true) @PathParam("permission") String permissionName) {
         try (QueryManager qm = new QueryManager()) {
             Team team = qm.getObjectByUuid(Team.class, uuid);
             if (team == null) {
@@ -354,7 +309,8 @@ public class PermissionResource extends AlpineResource {
                 permissions.remove(permission);
                 team.setPermissions(permissions);
                 team = qm.persist(team);
-                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT, "Removed permission for team: " + team.getName() + " / permission: " + permission.getName());
+                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT,
+                        "Removed permission for team: " + team.getName() + " / permission: " + permission.getName());
                 return Response.ok(team).build();
             }
             return Response.status(Response.Status.NOT_MODIFIED).build();
@@ -367,16 +323,17 @@ public class PermissionResource extends AlpineResource {
     @Produces(MediaType.APPLICATION_JSON)
     @Operation(description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_UPDATE</strong></p>")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "The updated user", content = @Content(schema = @Schema(implementation = UserPrincipal.class))),
+            @ApiResponse(responseCode = "200", description = "The updated user", content = @Content(schema = @Schema(implementation = User.class))),
             @ApiResponse(responseCode = "304", description = "The user is already has the specified permission(s)"),
             @ApiResponse(responseCode = "400", description = "Bad request"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
             @ApiResponse(responseCode = "404", description = "The user could not be found")
     })
     @PermissionRequired({ Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_UPDATE })
-    public Response setUserPermissions(@Parameter(description = "A username and valid list permission") @Valid UserPermissionsSetRequest request) {
+    public Response setUserPermissions(
+            @Parameter(description = "A username and valid list permission") @Valid UserPermissionsSetRequest request) {
         try (QueryManager qm = new QueryManager()) {
-            UserPrincipal user = qm.getUserPrincipal(request.username());
+            User user = qm.getUser(request.username());
             if (user == null)
                 return Response.status(Response.Status.NOT_FOUND).entity("The user could not be found.").build();
 
@@ -425,7 +382,8 @@ public class PermissionResource extends AlpineResource {
             @ApiResponse(responseCode = "404", description = "The team could not be found")
     })
     @PermissionRequired({ Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_UPDATE })
-    public Response setTeamPermissions(@Parameter(description = "Team UUID and requested permissions") @Valid TeamPermissionsSetRequest request) {
+    public Response setTeamPermissions(
+            @Parameter(description = "Team UUID and requested permissions") @Valid TeamPermissionsSetRequest request) {
         try (QueryManager qm = new QueryManager()) {
             Team team = qm.getObjectByUuid(Team.class, request.team());
             if (team == null)
