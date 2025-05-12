@@ -20,5 +20,17 @@ package org.dependencytrack.resources.v1.vo;
 
 import org.dependencytrack.model.validation.ValidUuid;
 
-public record RoleProjectRequest(@ValidUuid String roleUUID, @ValidUuid String projectUUID) {
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+
+import alpine.common.validation.RegexSequence;
+import alpine.server.json.TrimmedStringDeserializer;
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.Pattern;
+
+public record RoleProjectRequest(
+        @Schema(requiredMode = Schema.RequiredMode.REQUIRED) @JsonDeserialize(using = TrimmedStringDeserializer.class) @Pattern(regexp = RegexSequence.Definition.PRINTABLE_CHARS_PLUS, message = "The username may only contain printable characters") String username,
+
+        @ValidUuid String roleUUID,
+
+        @ValidUuid String projectUUID) {
 }

@@ -17,6 +17,7 @@
  * Copyright (c) OWASP Foundation. All Rights Reserved.
  */
 package org.dependencytrack.resources.v1;
+
 import alpine.Config;
 import alpine.common.logging.Logger;
 import alpine.model.LdapUser;
@@ -65,6 +66,7 @@ import org.dependencytrack.event.kafka.KafkaEventDispatcher;
 import org.dependencytrack.model.IdentifiableObject;
 import org.dependencytrack.model.Project;
 import org.dependencytrack.model.Role;
+import org.dependencytrack.model.ProjectRole;
 import org.dependencytrack.notification.NotificationConstants;
 import org.dependencytrack.notification.NotificationGroup;
 import org.dependencytrack.notification.NotificationScope;
@@ -112,35 +114,34 @@ public class UserResource extends AlpineResource {
     @Path("login")
     @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
     @Produces(MediaType.TEXT_PLAIN)
-    @Operation(
-            summary = "Assert login credentials",
-            description = "Upon a successful login, a JSON Web Token will be returned in the response body. This functionality requires authentication to be enabled.")
+    @Operation(summary = "Assert login credentials", description = "Upon a successful login, a JSON Web Token will be returned in the response body. This functionality requires authentication to be enabled.")
     @ApiResponses(value = {
-            @ApiResponse(
-                    responseCode = "200",
-                    description = "A bearer token to be used for authenticating with the REST API",
-                    content = @Content(schema = @Schema(type = "string"))
-            ),
+            @ApiResponse(responseCode = "200", description = "A bearer token to be used for authenticating with the REST API", content = @Content(schema = @Schema(type = "string"))),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
             @ApiResponse(responseCode = "403", description = "Forbidden")
     })
     @AuthenticationNotRequired
-    public Response validateCredentials(@FormParam("username") String username, @FormParam("password") String password) {
+    public Response validateCredentials(@FormParam("username") String username,
+            @FormParam("password") String password) {
         final Authenticator auth = new Authenticator(username, password);
         try (QueryManager qm = new QueryManager()) {
             final Principal principal = auth.authenticate();
-            super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_SUCCESS, "Successful user login / username: " + username);
+            super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_SUCCESS,
+                    "Successful user login / username: " + username);
             final List<Permission> permissions = qm.getEffectivePermissions((UserPrincipal) principal);
             final KeyManager km = KeyManager.getInstance();
             final JsonWebToken jwt = new JsonWebToken(km.getSecretKey());
             final String token = jwt.createToken(principal, permissions);
             return Response.ok(token).build();
         } catch (AlpineAuthenticationException e) {
-            if (AlpineAuthenticationException.CauseType.SUSPENDED == e.getCauseType() || AlpineAuthenticationException.CauseType.UNMAPPED_ACCOUNT == e.getCauseType()) {
-                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_FAILURE, "Unauthorized login attempt / account is suspended / username: " + username);
+            if (AlpineAuthenticationException.CauseType.SUSPENDED == e.getCauseType()
+                    || AlpineAuthenticationException.CauseType.UNMAPPED_ACCOUNT == e.getCauseType()) {
+                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_FAILURE,
+                        "Unauthorized login attempt / account is suspended / username: " + username);
                 return Response.status(Response.Status.FORBIDDEN).entity(e.getCauseType().name()).build();
             } else {
-                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_FAILURE, "Unauthorized login attempt / invalid credentials / username: " + username);
+                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_FAILURE,
+                        "Unauthorized login attempt / invalid credentials / username: " + username);
                 return Response.status(Response.Status.UNAUTHORIZED).entity(e.getCauseType().name()).build();
             }
         }
@@ -153,41 +154,39 @@ public class UserResource extends AlpineResource {
     @Path("oidc/login")
     @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
     @Produces(MediaType.TEXT_PLAIN)
-    @Operation(
-            summary = "Login with OpenID Connect",
-            description = "Upon a successful login, a JSON Web Token will be returned in the response body. This functionality requires authentication to be enabled.")
+    @Operation(summary = "Login with OpenID Connect", description = "Upon a successful login, a JSON Web Token will be returned in the response body. This functionality requires authentication to be enabled.")
     @ApiResponses(value = {
-            @ApiResponse(
-                    responseCode = "200",
-                    description = "A bearer token to be used for authenticating with the REST API",
-                    content = @Content(schema = @Schema(type = "string"))
-            ),
+            @ApiResponse(responseCode = "200", description = "A bearer token to be used for authenticating with the REST API", content = @Content(schema = @Schema(type = "string"))),
             @ApiResponse(responseCode = "204", description = "No Content"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
             @ApiResponse(responseCode = "403", description = "Forbidden")
     })
     @AuthenticationNotRequired
-    public Response validateOidcAccessToken(@Parameter(description = "An OAuth2 access token", required = true)
-                                            @FormParam("idToken") final String idToken,
+    public Response validateOidcAccessToken(
+            @Parameter(description = "An OAuth2 access token", required = true) @FormParam("idToken") final String idToken,
             @FormParam("accessToken") final String accessToken) {
         final OidcAuthenticationService authService = new OidcAuthenticationService(idToken, accessToken);
 
         if (!authService.isSpecified()) {
-            super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT, "An OpenID Connect login attempt was made, but OIDC is disabled or not properly configured");
+            super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT,
+                    "An OpenID Connect login attempt was made, but OIDC is disabled or not properly configured");
             return Response.status(Response.Status.NO_CONTENT).build();
         }
 
         try (final QueryManager qm = new QueryManager()) {
             final Principal principal = authService.authenticate();
-            super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_SUCCESS, "Successful OpenID Connect login / username: " + principal.getName());
+            super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_SUCCESS,
+                    "Successful OpenID Connect login / username: " + principal.getName());
             final List<Permission> permissions = qm.getEffectivePermissions((UserPrincipal) principal);
             final KeyManager km = KeyManager.getInstance();
             final JsonWebToken jwt = new JsonWebToken(km.getSecretKey());
             final String token = jwt.createToken(principal, permissions);
             return Response.ok(token).build();
         } catch (AlpineAuthenticationException e) {
-            super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_FAILURE, "Unauthorized OpenID Connect login attempt");
-            if (AlpineAuthenticationException.CauseType.SUSPENDED == e.getCauseType() || AlpineAuthenticationException.CauseType.UNMAPPED_ACCOUNT == e.getCauseType()) {
+            super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_FAILURE,
+                    "Unauthorized OpenID Connect login attempt");
+            if (AlpineAuthenticationException.CauseType.SUSPENDED == e.getCauseType()
+                    || AlpineAuthenticationException.CauseType.UNMAPPED_ACCOUNT == e.getCauseType()) {
                 return Response.status(Response.Status.FORBIDDEN).entity(e.getCauseType().name()).build();
             } else {
                 return Response.status(Response.Status.UNAUTHORIZED).entity(e.getCauseType().name()).build();
@@ -199,10 +198,7 @@ public class UserResource extends AlpineResource {
     @Path("forceChangePassword")
     @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
     @Produces(MediaType.TEXT_PLAIN)
-    @Operation(
-            summary = "Asserts login credentials and upon successful authentication, verifies passwords match and changes users password",
-            description = "Upon a successful login, a JSON Web Token will be returned in the response body. This functionality requires authentication to be enabled."
-    )
+    @Operation(summary = "Asserts login credentials and upon successful authentication, verifies passwords match and changes users password", description = "Upon a successful login, a JSON Web Token will be returned in the response body. This functionality requires authentication to be enabled.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Password changed successfully"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
@@ -225,31 +221,45 @@ public class UserResource extends AlpineResource {
             }
             if (principal instanceof ManagedUser) {
                 final ManagedUser user = qm.getManagedUser(((ManagedUser) principal).getUsername());
-                if (StringUtils.isNotBlank(newPassword) && StringUtils.isNotBlank(confirmPassword) && newPassword.equals(confirmPassword)) {
+                if (StringUtils.isNotBlank(newPassword) && StringUtils.isNotBlank(confirmPassword)
+                        && newPassword.equals(confirmPassword)) {
                     if (PasswordService.matches(newPassword.toCharArray(), user)) {
-                        super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_FAILURE, "Existing password is the same as new password. Password not changed. / username: " + username);
-                        return Response.status(Response.Status.NOT_ACCEPTABLE).entity("Existing password is the same as new password. Password not changed.").build();
+                        super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_FAILURE,
+                                "Existing password is the same as new password. Password not changed. / username: "
+                                        + username);
+                        return Response.status(Response.Status.NOT_ACCEPTABLE)
+                                .entity("Existing password is the same as new password. Password not changed.").build();
                     } else {
                         user.setPassword(String.valueOf(PasswordService.createHash(newPassword.toCharArray())));
                         user.setForcePasswordChange(false);
                         qm.updateManagedUser(user);
-                        super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT, "Password successfully changed / username: " + username);
+                        super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT,
+                                "Password successfully changed / username: " + username);
                         return Response.ok().build();
                     }
                 } else {
-                    super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_FAILURE, "The passwords do not match. Password not changed. / username: " + username);
-                    return Response.status(Response.Status.NOT_ACCEPTABLE).entity("The passwords do not match. Password not changed.").build();
+                    super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_FAILURE,
+                            "The passwords do not match. Password not changed. / username: " + username);
+                    return Response.status(Response.Status.NOT_ACCEPTABLE)
+                            .entity("The passwords do not match. Password not changed.").build();
                 }
             } else {
-                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_FAILURE, "Changing passwords for non-managed users is not forbidden. Password not changed. / username: " + username);
-                return Response.status(Response.Status.NOT_ACCEPTABLE).entity("Changing passwords for non-managed users is not forbidden. Password not changed.").build();
+                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_FAILURE,
+                        "Changing passwords for non-managed users is not forbidden. Password not changed. / username: "
+                                + username);
+                return Response.status(Response.Status.NOT_ACCEPTABLE)
+                        .entity("Changing passwords for non-managed users is not forbidden. Password not changed.")
+                        .build();
             }
         } catch (AlpineAuthenticationException e) {
-            if (AlpineAuthenticationException.CauseType.SUSPENDED == e.getCauseType() || AlpineAuthenticationException.CauseType.UNMAPPED_ACCOUNT == e.getCauseType()) {
-                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_FAILURE, "Unauthorized login attempt / account is suspended / username: " + username);
+            if (AlpineAuthenticationException.CauseType.SUSPENDED == e.getCauseType()
+                    || AlpineAuthenticationException.CauseType.UNMAPPED_ACCOUNT == e.getCauseType()) {
+                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_FAILURE,
+                        "Unauthorized login attempt / account is suspended / username: " + username);
                 return Response.status(Response.Status.FORBIDDEN).entity(e.getCauseType().name()).build();
             } else {
-                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_FAILURE, "Unauthorized login attempt / invalid credentials / username: " + username);
+                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_FAILURE,
+                        "Unauthorized login attempt / invalid credentials / username: " + username);
                 return Response.status(Response.Status.UNAUTHORIZED).entity(e.getCauseType().name()).build();
             }
         }
@@ -258,20 +268,12 @@ public class UserResource extends AlpineResource {
     @GET
     @Path("managed")
     @Produces(MediaType.APPLICATION_JSON)
-    @Operation(
-            summary = "Returns a list of all managed users",
-            description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_READ</strong></p>"
-    )
+    @Operation(summary = "Returns a list of all managed users", description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_READ</strong></p>")
     @ApiResponses(value = {
-            @ApiResponse(
-                    responseCode = "200",
-                    description = "A list of all managed users",
-                    headers = @Header(name = TOTAL_COUNT_HEADER, description = "The total number of managed users", schema = @Schema(format = "integer")),
-                    content = @Content(array = @ArraySchema(schema = @Schema(implementation = ManagedUser.class)))
-            ),
+            @ApiResponse(responseCode = "200", description = "A list of all managed users", headers = @Header(name = TOTAL_COUNT_HEADER, description = "The total number of managed users", schema = @Schema(format = "integer")), content = @Content(array = @ArraySchema(schema = @Schema(implementation = ManagedUser.class)))),
             @ApiResponse(responseCode = "401", description = "Unauthorized")
     })
-    @PermissionRequired({Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_READ})
+    @PermissionRequired({ Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_READ })
     public Response getManagedUsers() {
         try (QueryManager qm = new QueryManager(getAlpineRequest())) {
             final long totalCount = qm.getCount(ManagedUser.class);
@@ -283,20 +285,12 @@ public class UserResource extends AlpineResource {
     @GET
     @Path("ldap")
     @Produces(MediaType.APPLICATION_JSON)
-    @Operation(
-            summary = "Returns a list of all LDAP users",
-            description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_READ</strong></p>"
-    )
+    @Operation(summary = "Returns a list of all LDAP users", description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_READ</strong></p>")
     @ApiResponses(value = {
-            @ApiResponse(
-                    responseCode = "200",
-                    description = "A list of all LDAP users",
-                    headers = @Header(name = TOTAL_COUNT_HEADER, description = "The total number of LDAP users", schema = @Schema(format = "integer")),
-                    content = @Content(array = @ArraySchema(schema = @Schema(implementation = LdapUser.class)))
-            ),
+            @ApiResponse(responseCode = "200", description = "A list of all LDAP users", headers = @Header(name = TOTAL_COUNT_HEADER, description = "The total number of LDAP users", schema = @Schema(format = "integer")), content = @Content(array = @ArraySchema(schema = @Schema(implementation = LdapUser.class)))),
             @ApiResponse(responseCode = "401", description = "Unauthorized")
     })
-    @PermissionRequired({Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_READ})
+    @PermissionRequired({ Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_READ })
     public Response getLdapUsers() {
         try (QueryManager qm = new QueryManager(getAlpineRequest())) {
             final long totalCount = qm.getCount(LdapUser.class);
@@ -311,19 +305,12 @@ public class UserResource extends AlpineResource {
     @GET
     @Path("oidc")
     @Produces(MediaType.APPLICATION_JSON)
-    @Operation(
-            summary = "Returns a list of all OIDC users",
-            description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_READ</strong></p>"
-    )
+    @Operation(summary = "Returns a list of all OIDC users", description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_READ</strong></p>")
     @ApiResponses(value = {
-            @ApiResponse(
-                    responseCode = "200",
-                    description = "A list of all OIDC users",
-                    headers = @Header(name = TOTAL_COUNT_HEADER, description = "The total number of OIDC users", schema = @Schema(format = "integer"))
-            ),
+            @ApiResponse(responseCode = "200", description = "A list of all OIDC users", headers = @Header(name = TOTAL_COUNT_HEADER, description = "The total number of OIDC users", schema = @Schema(format = "integer"))),
             @ApiResponse(responseCode = "401", description = "Unauthorized")
     })
-    @PermissionRequired({Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_READ})
+    @PermissionRequired({ Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_READ })
     public Response getOidcUsers() {
         try (QueryManager qm = new QueryManager(getAlpineRequest())) {
             final long totalCount = qm.getCount(OidcUser.class);
@@ -335,15 +322,9 @@ public class UserResource extends AlpineResource {
     @GET
     @Path("self")
     @Produces(MediaType.APPLICATION_JSON)
-    @Operation(
-            summary = "Returns information about the current logged in user."
-    )
+    @Operation(summary = "Returns information about the current logged in user.")
     @ApiResponses(value = {
-            @ApiResponse(
-                    responseCode = "200",
-                    description = "Information about the current logged in user",
-                    content = @Content(schema = @Schema(implementation = UserPrincipal.class))
-            ),
+            @ApiResponse(responseCode = "200", description = "Information about the current logged in user", content = @Content(schema = @Schema(implementation = UserPrincipal.class))),
             @ApiResponse(responseCode = "401", description = "Unauthorized")
     })
     public Response getSelf() {
@@ -369,15 +350,9 @@ public class UserResource extends AlpineResource {
     @POST
     @Path("self")
     @Produces(MediaType.APPLICATION_JSON)
-    @Operation(
-            summary = "Updates information about the current logged in user."
-    )
+    @Operation(summary = "Updates information about the current logged in user.")
     @ApiResponses(value = {
-            @ApiResponse(
-                    responseCode = "200",
-                    description = "The updated user",
-                    content = @Content(schema = @Schema(implementation = ManagedUser.class))
-            ),
+            @ApiResponse(responseCode = "200", description = "The updated user", content = @Content(schema = @Schema(implementation = ManagedUser.class))),
             @ApiResponse(responseCode = "400", description = "An invalid payload was submitted or the user is not a managed user."),
             @ApiResponse(responseCode = "401", description = "Unauthorized")
     })
@@ -396,19 +371,24 @@ public class UserResource extends AlpineResource {
                         return Response.status(Response.Status.BAD_REQUEST).entity("Full name is required.").build();
                     }
                     if (StringUtils.isBlank(jsonUser.getEmail())) {
-                        return Response.status(Response.Status.BAD_REQUEST).entity("Email address is required.").build();
+                        return Response.status(Response.Status.BAD_REQUEST).entity("Email address is required.")
+                                .build();
                     }
                     user.setFullname(StringUtils.trimToNull(jsonUser.getFullname()));
                     user.setEmail(StringUtils.trimToNull(jsonUser.getEmail()));
-                    if (StringUtils.isNotBlank(jsonUser.getNewPassword()) && StringUtils.isNotBlank(jsonUser.getConfirmPassword())) {
+                    if (StringUtils.isNotBlank(jsonUser.getNewPassword())
+                            && StringUtils.isNotBlank(jsonUser.getConfirmPassword())) {
                         if (jsonUser.getNewPassword().equals(jsonUser.getConfirmPassword())) {
-                            user.setPassword(String.valueOf(PasswordService.createHash(jsonUser.getNewPassword().toCharArray())));
+                            user.setPassword(String
+                                    .valueOf(PasswordService.createHash(jsonUser.getNewPassword().toCharArray())));
                         } else {
-                            return Response.status(Response.Status.BAD_REQUEST).entity("Passwords do not match.").build();
+                            return Response.status(Response.Status.BAD_REQUEST).entity("Passwords do not match.")
+                                    .build();
                         }
                     }
                     qm.updateManagedUser(user);
-                    super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT, "User profile updated: " + user.getUsername());
+                    super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT,
+                            "User profile updated: " + user.getUsername());
                     return Response.ok(user).build();
                 }
                 return Response.status(Response.Status.UNAUTHORIZED).build();
@@ -422,21 +402,14 @@ public class UserResource extends AlpineResource {
     @Path("ldap")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    @Operation(
-            summary = "Creates a new user that references an existing LDAP object.",
-            description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_CREATE</strong></p>"
-    )
+    @Operation(summary = "Creates a new user that references an existing LDAP object.", description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_CREATE</strong></p>")
     @ApiResponses(value = {
-            @ApiResponse(
-                    responseCode = "201",
-                    description = "The created LDAP user",
-                    content = @Content(schema = @Schema(implementation = LdapUser.class))
-            ),
+            @ApiResponse(responseCode = "201", description = "The created LDAP user", content = @Content(schema = @Schema(implementation = LdapUser.class))),
             @ApiResponse(responseCode = "400", description = "Username cannot be null or blank."),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
             @ApiResponse(responseCode = "409", description = "A user with the same username already exists. Cannot create new user")
     })
-    @PermissionRequired({Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_CREATE})
+    @PermissionRequired({ Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_CREATE })
     public Response createLdapUser(LdapUser jsonUser) {
         try (QueryManager qm = new QueryManager()) {
             if (StringUtils.isBlank(jsonUser.getUsername())) {
@@ -445,11 +418,14 @@ public class UserResource extends AlpineResource {
             LdapUser user = qm.getLdapUser(jsonUser.getUsername());
             if (user == null) {
                 user = qm.createLdapUser(jsonUser.getUsername());
-                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT, "LDAP user created: " + jsonUser.getUsername());
-                dispatchUserCreatedNotification("LDAP user created", buildUserSubject(jsonUser.getUsername(), jsonUser.getEmail()));
+                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT,
+                        "LDAP user created: " + jsonUser.getUsername());
+                dispatchUserCreatedNotification("LDAP user created",
+                        buildUserSubject(jsonUser.getUsername(), jsonUser.getEmail()));
                 return Response.status(Response.Status.CREATED).entity(user).build();
             } else {
-                return Response.status(Response.Status.CONFLICT).entity("A user with the same username already exists. Cannot create new user.").build();
+                return Response.status(Response.Status.CONFLICT)
+                        .entity("A user with the same username already exists. Cannot create new user.").build();
             }
         }
     }
@@ -458,24 +434,23 @@ public class UserResource extends AlpineResource {
     @Path("ldap")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    @Operation(
-            summary = "Deletes a user.",
-            description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_DELETE</strong></p>"
-    )
+    @Operation(summary = "Deletes a user.", description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_DELETE</strong></p>")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "204", description = "LDAP user removed successfully"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
             @ApiResponse(responseCode = "404", description = "The user could not be found")
     })
-    @PermissionRequired({Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_DELETE})
+    @PermissionRequired({ Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_DELETE })
     public Response deleteLdapUser(LdapUser jsonUser) {
         try (QueryManager qm = new QueryManager()) {
             final LdapUser user = qm.getLdapUser(jsonUser.getUsername());
             if (user != null) {
                 final LdapUser detachedUser = qm.getPersistenceManager().detachCopy(user);
                 qm.delete(user);
-                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT, "LDAP user deleted: " + detachedUser.getUsername());
-                dispatchUserDeletedNotification("LDAP user deleted", buildUserSubject(detachedUser.getUsername(), detachedUser.getEmail()));
+                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT,
+                        "LDAP user deleted: " + detachedUser.getUsername());
+                dispatchUserDeletedNotification("LDAP user deleted",
+                        buildUserSubject(detachedUser.getUsername(), detachedUser.getEmail()));
                 return Response.status(Response.Status.NO_CONTENT).build();
             } else {
                 return Response.status(Response.Status.NOT_FOUND).entity("The user could not be found.").build();
@@ -487,21 +462,14 @@ public class UserResource extends AlpineResource {
     @Path("managed")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    @Operation(
-            summary = "Creates a new user.",
-            description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_CREATE</strong></p>"
-    )
+    @Operation(summary = "Creates a new user.", description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_CREATE</strong></p>")
     @ApiResponses(value = {
-            @ApiResponse(
-                    responseCode = "201",
-                    description = "The created user",
-                    content = @Content(schema = @Schema(implementation = ManagedUser.class))
-            ),
+            @ApiResponse(responseCode = "201", description = "The created user", content = @Content(schema = @Schema(implementation = ManagedUser.class))),
             @ApiResponse(responseCode = "400", description = "Missing required field"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
             @ApiResponse(responseCode = "409", description = "A user with the same username already exists. Cannot create new user")
     })
-    @PermissionRequired({Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_CREATE})
+    @PermissionRequired({ Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_CREATE })
     public Response createManagedUser(ManagedUser jsonUser) {
         try (QueryManager qm = new QueryManager()) {
 
@@ -512,7 +480,8 @@ public class UserResource extends AlpineResource {
                 return Response.status(Response.Status.BAD_REQUEST).entity("The users full name is missing.").build();
             }
             if (StringUtils.isBlank(jsonUser.getEmail())) {
-                return Response.status(Response.Status.BAD_REQUEST).entity("The users email address is missing.").build();
+                return Response.status(Response.Status.BAD_REQUEST).entity("The users email address is missing.")
+                        .build();
             }
             if (StringUtils.isBlank(jsonUser.getNewPassword()) || StringUtils.isBlank(jsonUser.getConfirmPassword())) {
                 return Response.status(Response.Status.BAD_REQUEST).entity("A password must be set.").build();
@@ -526,11 +495,14 @@ public class UserResource extends AlpineResource {
                 user = qm.createManagedUser(jsonUser.getUsername(), jsonUser.getFullname(), jsonUser.getEmail(),
                         String.valueOf(PasswordService.createHash(jsonUser.getNewPassword().toCharArray())),
                         jsonUser.isForcePasswordChange(), jsonUser.isNonExpiryPassword(), jsonUser.isSuspended());
-                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT, "Managed user created: " + jsonUser.getUsername());
-                dispatchUserCreatedNotification("Managed user created", buildUserSubject(jsonUser.getUsername(), jsonUser.getEmail()));
+                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT,
+                        "Managed user created: " + jsonUser.getUsername());
+                dispatchUserCreatedNotification("Managed user created",
+                        buildUserSubject(jsonUser.getUsername(), jsonUser.getEmail()));
                 return Response.status(Response.Status.CREATED).entity(user).build();
             } else {
-                return Response.status(Response.Status.CONFLICT).entity("A user with the same username already exists. Cannot create new user.").build();
+                return Response.status(Response.Status.CONFLICT)
+                        .entity("A user with the same username already exists. Cannot create new user.").build();
             }
         }
     }
@@ -539,34 +511,31 @@ public class UserResource extends AlpineResource {
     @Path("managed")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    @Operation(
-            summary = "Updates a managed user.",
-            description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_UPDATE</strong></p>"
-    )
+    @Operation(summary = "Updates a managed user.", description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_UPDATE</strong></p>")
     @ApiResponses(value = {
-            @ApiResponse(
-                    responseCode = "200",
-                    description = "The updated user",
-                    content = @Content(schema = @Schema(implementation = ManagedUser.class))
-            ),
+            @ApiResponse(responseCode = "200", description = "The updated user", content = @Content(schema = @Schema(implementation = ManagedUser.class))),
             @ApiResponse(responseCode = "400", description = "Missing required field"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
             @ApiResponse(responseCode = "404", description = "The user could not be found")
     })
-    @PermissionRequired({Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_UPDATE})
+    @PermissionRequired({ Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_UPDATE })
     public Response updateManagedUser(ManagedUser jsonUser) {
         try (QueryManager qm = new QueryManager()) {
             ManagedUser user = qm.getManagedUser(jsonUser.getUsername());
             if (user != null) {
                 if (StringUtils.isBlank(jsonUser.getFullname())) {
-                    return Response.status(Response.Status.BAD_REQUEST).entity("The users full name is missing.").build();
+                    return Response.status(Response.Status.BAD_REQUEST).entity("The users full name is missing.")
+                            .build();
                 }
                 if (StringUtils.isBlank(jsonUser.getEmail())) {
-                    return Response.status(Response.Status.BAD_REQUEST).entity("The users email address is missing.").build();
+                    return Response.status(Response.Status.BAD_REQUEST).entity("The users email address is missing.")
+                            .build();
                 }
-                if (StringUtils.isNotBlank(jsonUser.getNewPassword()) && StringUtils.isNotBlank(jsonUser.getConfirmPassword()) &&
+                if (StringUtils.isNotBlank(jsonUser.getNewPassword())
+                        && StringUtils.isNotBlank(jsonUser.getConfirmPassword()) &&
                         jsonUser.getNewPassword().equals(jsonUser.getConfirmPassword())) {
-                    user.setPassword(String.valueOf(PasswordService.createHash(jsonUser.getNewPassword().toCharArray())));
+                    user.setPassword(
+                            String.valueOf(PasswordService.createHash(jsonUser.getNewPassword().toCharArray())));
                 }
                 user.setFullname(jsonUser.getFullname());
                 user.setEmail(jsonUser.getEmail());
@@ -574,7 +543,8 @@ public class UserResource extends AlpineResource {
                 user.setNonExpiryPassword(jsonUser.isNonExpiryPassword());
                 user.setSuspended(jsonUser.isSuspended());
                 user = qm.updateManagedUser(user);
-                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT, "Managed user updated: " + jsonUser.getUsername());
+                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT,
+                        "Managed user updated: " + jsonUser.getUsername());
                 return Response.ok(user).build();
             } else {
                 return Response.status(Response.Status.NOT_FOUND).entity("The user could not be found.").build();
@@ -586,24 +556,23 @@ public class UserResource extends AlpineResource {
     @Path("managed")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    @Operation(
-            summary = "Deletes a user.",
-            description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_DELETE</strong></p>"
-    )
+    @Operation(summary = "Deletes a user.", description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_DELETE</strong></p>")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "204", description = "User removed successfully"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
             @ApiResponse(responseCode = "404", description = "The user could not be found")
     })
-    @PermissionRequired({Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_DELETE})
+    @PermissionRequired({ Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_DELETE })
     public Response deleteManagedUser(ManagedUser jsonUser) {
         try (QueryManager qm = new QueryManager()) {
             final ManagedUser user = qm.getManagedUser(jsonUser.getUsername());
             if (user != null) {
                 final ManagedUser detachedUser = qm.getPersistenceManager().detachCopy(user);
                 qm.delete(user);
-                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT, "Managed user deleted: " + detachedUser.getUsername());
-                dispatchUserDeletedNotification("Managed user deleted", buildUserSubject(detachedUser.getUsername(), detachedUser.getEmail()));
+                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT,
+                        "Managed user deleted: " + detachedUser.getUsername());
+                dispatchUserDeletedNotification("Managed user deleted",
+                        buildUserSubject(detachedUser.getUsername(), detachedUser.getEmail()));
                 return Response.status(Response.Status.NO_CONTENT).build();
             } else {
                 return Response.status(Response.Status.NOT_FOUND).entity("The user could not be found.").build();
@@ -615,21 +584,14 @@ public class UserResource extends AlpineResource {
     @Path("oidc")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    @Operation(
-            summary = "Creates a new user that references an existing OpenID Connect user.",
-            description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_CREATE</strong></p>"
-    )
+    @Operation(summary = "Creates a new user that references an existing OpenID Connect user.", description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_CREATE</strong></p>")
     @ApiResponses(value = {
-            @ApiResponse(
-                    responseCode = "201",
-                    description = "The created OIDC user",
-                    content = @Content(schema = @Schema(implementation = OidcUser.class))
-            ),
+            @ApiResponse(responseCode = "201", description = "The created OIDC user", content = @Content(schema = @Schema(implementation = OidcUser.class))),
             @ApiResponse(responseCode = "400", description = "Username cannot be null or blank."),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
             @ApiResponse(responseCode = "409", description = "A user with the same username already exists. Cannot create new user")
     })
-    @PermissionRequired({Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_CREATE})
+    @PermissionRequired({ Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_CREATE })
     public Response createOidcUser(final OidcUser jsonUser) {
         try (QueryManager qm = new QueryManager()) {
             if (StringUtils.isBlank(jsonUser.getUsername())) {
@@ -638,11 +600,14 @@ public class UserResource extends AlpineResource {
             OidcUser user = qm.getOidcUser(jsonUser.getUsername());
             if (user == null) {
                 user = qm.createOidcUser(jsonUser.getUsername());
-                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT, "OpenID Connect user created: " + jsonUser.getUsername());
-                dispatchUserCreatedNotification("OpenID Connect user created", buildUserSubject(jsonUser.getUsername(), jsonUser.getEmail()));
+                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT,
+                        "OpenID Connect user created: " + jsonUser.getUsername());
+                dispatchUserCreatedNotification("OpenID Connect user created",
+                        buildUserSubject(jsonUser.getUsername(), jsonUser.getEmail()));
                 return Response.status(Response.Status.CREATED).entity(user).build();
             } else {
-                return Response.status(Response.Status.CONFLICT).entity("A user with the same username already exists. Cannot create new user.").build();
+                return Response.status(Response.Status.CONFLICT)
+                        .entity("A user with the same username already exists. Cannot create new user.").build();
             }
         }
     }
@@ -651,24 +616,23 @@ public class UserResource extends AlpineResource {
     @Path("oidc")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    @Operation(
-            summary = "Deletes an OpenID Connect user.",
-            description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_DELETE</strong></p>"
-    )
+    @Operation(summary = "Deletes an OpenID Connect user.", description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_DELETE</strong></p>")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "204", description = "OIDC user removed successfully"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
             @ApiResponse(responseCode = "404", description = "The user could not be found")
     })
-    @PermissionRequired({Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_DELETE})
+    @PermissionRequired({ Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_DELETE })
     public Response deleteOidcUser(final OidcUser jsonUser) {
         try (QueryManager qm = new QueryManager()) {
             final OidcUser user = qm.getOidcUser(jsonUser.getUsername());
             if (user != null) {
                 final OidcUser detachedUser = qm.getPersistenceManager().detachCopy(user);
                 qm.delete(user);
-                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT, "OpenID Connect user deleted: " + detachedUser.getUsername());
-                dispatchUserDeletedNotification("OpenID Connect user deleted", buildUserSubject(detachedUser.getUsername(), detachedUser.getEmail()));
+                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT,
+                        "OpenID Connect user deleted: " + detachedUser.getUsername());
+                dispatchUserDeletedNotification("OpenID Connect user deleted",
+                        buildUserSubject(detachedUser.getUsername(), detachedUser.getEmail()));
                 return Response.status(Response.Status.NO_CONTENT).build();
             } else {
                 return Response.status(Response.Status.NOT_FOUND).entity("The user could not be found.").build();
@@ -680,26 +644,17 @@ public class UserResource extends AlpineResource {
     @Path("/{username}/membership")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    @Operation(
-            summary = "Adds the username to the specified team.",
-            description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_UPDATE</strong></p>"
-    )
+    @Operation(summary = "Adds the username to the specified team.", description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_UPDATE</strong></p>")
     @ApiResponses(value = {
-            @ApiResponse(
-                    responseCode = "200",
-                    description = "The updated user",
-                    content = @Content(schema = @Schema(implementation = UserPrincipal.class))
-            ),
+            @ApiResponse(responseCode = "200", description = "The updated user", content = @Content(schema = @Schema(implementation = UserPrincipal.class))),
             @ApiResponse(responseCode = "304", description = "The user is already a member of the specified team"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
             @ApiResponse(responseCode = "404", description = "The user or team could not be found")
     })
-    @PermissionRequired({Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_UPDATE})
+    @PermissionRequired({ Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_UPDATE })
     public Response addTeamToUser(
-            @Parameter(description = "A valid username", required = true)
-            @PathParam("username") String username,
-            @Parameter(description = "The UUID of the team to associate username with", required = true)
-            IdentifiableObject identifiableObject) {
+            @Parameter(description = "A valid username", required = true) @PathParam("username") String username,
+            @Parameter(description = "The UUID of the team to associate username with", required = true) IdentifiableObject identifiableObject) {
         try (QueryManager qm = new QueryManager()) {
             final Team team = qm.getObjectByUuid(Team.class, identifiableObject.getUuid());
             if (team == null) {
@@ -712,10 +667,12 @@ public class UserResource extends AlpineResource {
             final boolean modified = qm.addUserToTeam(principal, team);
             principal = qm.getObjectById(principal.getClass(), principal.getId());
             if (modified) {
-                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT, "Added team membership for: " + principal.getName() + " / team: " + team.getName());
+                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT,
+                        "Added team membership for: " + principal.getName() + " / team: " + team.getName());
                 return Response.ok(principal).build();
             } else {
-                return Response.status(Response.Status.NOT_MODIFIED).entity("The user is already a member of the specified team.").build();
+                return Response.status(Response.Status.NOT_MODIFIED)
+                        .entity("The user is already a member of the specified team.").build();
             }
         }
     }
@@ -724,26 +681,17 @@ public class UserResource extends AlpineResource {
     @Path("/{username}/membership")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    @Operation(
-            summary = "Removes the username from the specified team.",
-            description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_DELETE</strong></p>"
-    )
+    @Operation(summary = "Removes the username from the specified team.", description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_DELETE</strong></p>")
     @ApiResponses(value = {
-            @ApiResponse(
-                    responseCode = "200",
-                    description = "The updated user",
-                    content = @Content(schema = @Schema(implementation = UserPrincipal.class))
-            ),
+            @ApiResponse(responseCode = "200", description = "The updated user", content = @Content(schema = @Schema(implementation = UserPrincipal.class))),
             @ApiResponse(responseCode = "304", description = "The user was not a member of the specified team"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
             @ApiResponse(responseCode = "404", description = "The user or team could not be found")
     })
-    @PermissionRequired({Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_DELETE})
+    @PermissionRequired({ Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_DELETE })
     public Response removeTeamFromUser(
-            @Parameter(description = "A valid username", required = true)
-            @PathParam("username") String username,
-            @Parameter(description = "The UUID of the team to un-associate username from", required = true)
-            IdentifiableObject identifiableObject) {
+            @Parameter(description = "A valid username", required = true) @PathParam("username") String username,
+            @Parameter(description = "The UUID of the team to un-associate username from", required = true) IdentifiableObject identifiableObject) {
         try (QueryManager qm = new QueryManager()) {
             final Team team = qm.getObjectByUuid(Team.class, identifiableObject.getUuid());
             if (team == null) {
@@ -756,7 +704,8 @@ public class UserResource extends AlpineResource {
             final boolean modified = qm.removeUserFromTeam(principal, team);
             principal = qm.getObjectById(principal.getClass(), principal.getId());
             if (modified) {
-                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT, "Removed team membership for: " + principal.getName() + " / team: " + team.getName());
+                super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT,
+                        "Removed team membership for: " + principal.getName() + " / team: " + team.getName());
                 return Response.ok(principal).build();
             } else {
                 return Response.status(Response.Status.NOT_MODIFIED)
@@ -798,9 +747,10 @@ public class UserResource extends AlpineResource {
                 query.closeAll();
             }
 
-            if(requestedTeams.size() != request.teams().size()) {
+            if (requestedTeams.size() != request.teams().size()) {
                 List<String> notFound = new ArrayList<String>(request.teams());
-                final List<String> differences = requestedTeams.stream().map(Team::getUuid).map(UUID::toString).toList();
+                final List<String> differences = requestedTeams.stream().map(Team::getUuid).map(UUID::toString)
+                        .toList();
                 notFound.removeAll(differences);
 
                 ProblemDetails problem = new AccessManagementProblemDetails(
@@ -855,26 +805,17 @@ public class UserResource extends AlpineResource {
     @Path("/{username}/role")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    @Operation(
-            summary = "Adds role to specific user.",
-            description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_UPDATE</strong></p>"
-    )
+    @Operation(summary = "Adds role to specific user.", description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_UPDATE</strong></p>")
     @ApiResponses(value = {
-            @ApiResponse(
-                    responseCode = "200",
-                    description = "Updated user with a specific role",
-                    content = @Content(schema = @Schema(implementation = UserPrincipal.class))
-            ),
+            @ApiResponse(responseCode = "200", description = "Updated user with a specific role", content = @Content(schema = @Schema(implementation = UserPrincipal.class))),
             @ApiResponse(responseCode = "304", description = "The user has already been assigned to this role."),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
             @ApiResponse(responseCode = "404", description = "The user or role could not be found")
     })
-    @PermissionRequired({Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_UPDATE})
+    @PermissionRequired({ Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_UPDATE })
     public Response addRoleToUser(
-            @Parameter(description = "A valid username", required = true)
-            @PathParam("username") String username,
-            @Parameter(description = "Role and project information", required = true)
-            RoleProjectRequest roleProjectRequest) {
+            @Parameter(description = "A valid username", required = true) @PathParam("username") String username,
+            @Parameter(description = "Role and project information", required = true) RoleProjectRequest roleProjectRequest) {
         try (QueryManager qm = new QueryManager()) {
             final Role role = qm.getObjectByUuid(Role.class, roleProjectRequest.roleUUID());
             if (role == null)
@@ -904,15 +845,9 @@ public class UserResource extends AlpineResource {
     @Path("/{username}/role")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    @Operation(
-            summary = "Removes role from specific user.",
-            description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_UPDATE</strong></p>"
-)
+    @Operation(summary = "Removes role from specific user.", description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_UPDATE</strong></p>")
     @ApiResponses(value = {
-            @ApiResponse(
-                    responseCode = "200",
-                    description = "Updated user with a specific role removed",
-                    content = @Content(schema = @Schema(implementation = UserPrincipal.class))),
+            @ApiResponse(responseCode = "200", description = "Updated user with a specific role removed", content = @Content(schema = @Schema(implementation = UserPrincipal.class))),
             @ApiResponse(responseCode = "204", description = "The role has been successfully removed from the user"),
             @ApiResponse(responseCode = "304", description = "The user is not a member of the specified role"),
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
@@ -1004,6 +939,64 @@ public class UserResource extends AlpineResource {
             qm.persist(principal);
             super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT,
                     "Added team membership for: " + principal.getName() + " / team: " + requestedTeams.toString());
+            return Response.ok(principal).build();
+        }
+    }
+
+    @PUT
+    @Path("/role")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    @Operation(summary = "Update a users role in a project.", description = "<p>Requires permission <strong>ACCESS_MANAGEMENT</strong> or <strong>ACCESS_MANAGEMENT_UPDATE</strong></p>")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Updated user with a specific role", content = @Content(schema = @Schema(implementation = UserPrincipal.class))),
+            @ApiResponse(responseCode = "304", description = "The user has already been assigned to this role."),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "404", description = "The user or role could not be found")
+    })
+    @PermissionRequired({ Permissions.Constants.ACCESS_MANAGEMENT, Permissions.Constants.ACCESS_MANAGEMENT_UPDATE })
+    public Response updateUserRole(
+            @Parameter(description = "Role and project information", required = true) @Valid RoleProjectRequest roleProjectRequest) {
+        try (QueryManager qm = new QueryManager()) {
+
+            final Role role = qm.getObjectByUuid(Role.class, roleProjectRequest.roleUUID());
+            LOGGER.debug("Role UUID: " + roleProjectRequest.roleUUID());
+
+            if (role == null)
+                return Response.status(Response.Status.NOT_FOUND).entity("The role could not be found.").build();
+
+            UserPrincipal principal = qm.getUserPrincipal(roleProjectRequest.username());
+            if (principal == null)
+                return Response.status(Response.Status.NOT_FOUND).entity("The user could not be found.").build();
+
+            Project project = qm.getProject(roleProjectRequest.projectUUID());
+            LOGGER.debug("Project UUID: " + roleProjectRequest.projectUUID());
+
+            if (project == null)
+                return Response.status(Response.Status.NOT_FOUND).entity("The project could not be found.").build();
+
+            final List<? extends ProjectRole> userRoles = qm.getUserRoles(principal);
+            final boolean hasRole = userRoles.stream()
+                    .anyMatch(projectRole -> projectRole.getRole().getUuid().equals(role.getUuid()) &&
+                            projectRole.getProject().getUuid().equals(project.getUuid()));
+
+            if (hasRole) {
+                LOGGER.debug("User already has the specified role for the project.");
+                return Response.notModified().entity("The user is already a member of the specified role.").build();
+            }
+
+            final boolean modified = qm.removeRoleFromUser(principal, role, project)
+                    && qm.addRoleToUser(principal, role, project);
+            if (!modified) {
+                LOGGER.debug("Failed to modify the user's role.");
+                return Response.notModified().entity("The user is already a member of the specified role.").build();
+            }
+
+            LOGGER.debug("Successfully updated role for user: " + principal.getName());
+            super.logSecurityEvent(LOGGER, SecurityMarkers.SECURITY_AUDIT,
+                    "Added role membership for: %s / role: %s / project: %s"
+                            .formatted(principal.getName(), role.getName(), project.getName()));
+
             return Response.ok(principal).build();
         }
     }
